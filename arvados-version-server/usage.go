@@ -11,11 +11,11 @@ import (
 )
 
 var exampleConfigFile = []byte(`
-dirPath: "/tmp/arvados-version-server-checkout"
-cacheDirPath: "/tmp/arvados-version-server-cache"
-gitExecutablePath: "/usr/bin/git"
-listenPort: 8080
-shortHashLength: 7
+DirPath: "/tmp/arvados-version-server-checkout"
+CacheDirPath: "/tmp/arvados-version-server-cache"
+GitExecutablePath: "/usr/bin/git"
+ListenPort: 8080
+ShortHashLength: 7
 `)
 
 func usage(fs *flag.FlagSet) {

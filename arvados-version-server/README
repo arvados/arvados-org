@@ -21,3 +21,4 @@ DirPath: "/tmp/arvados-version-server-checkout"
 CacheDirPath: "/tmp/arvados-version-server-cache"
 GitExecutablePath: "/usr/bin/git"
 ListenPort: 8080
+ShortHashLength: 7
