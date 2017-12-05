@@ -284,6 +284,13 @@ func loadPackages() (packages []bundle) {
 			versionPrefix: "0.1",
 		},
 		{
+			sourceDir:     "tools/arv-sync-groups",
+			name:          "arv-sync-groups",
+			packageType:   "distribution",
+			versionType:   "go",
+			versionPrefix: "0.1",
+		},
+		{
 			sourceDir:     "sdk/ruby",
 			name:          "arvados",
 			packageType:   "gem",
