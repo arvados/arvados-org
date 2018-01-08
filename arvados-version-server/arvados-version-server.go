@@ -256,6 +256,13 @@ func loadPackages() (packages []bundle) {
 			versionPrefix: "0.1",
 		},
 		{
+			sourceDir:     "services/health",
+			name:          "arvados-health",
+			packageType:   "distribution",
+			versionType:   "go",
+			versionPrefix: "0.1",
+		},
+		{
 			sourceDir:     "tools/crunchstat-summary",
 			name:          "crunchstat-summary",
 			packageType:   "distribution",
