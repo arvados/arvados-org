@@ -106,7 +106,7 @@ func loadPackages() (packages []bundle) {
 			name:          "arvados/jobs",
 			packageType:   "docker",
 			versionType:   "docker",
-			versionPrefix: "",
+			versionPrefix: "1.0",
 		},
 		{
 			sourceDir:     "sdk/go/crunchrunner",
@@ -651,9 +651,13 @@ func getPackageVersions(hash string) (versions map[string]map[string]string, git
 					return nil, "", err
 				}
 			}
-			packageVersion, err = dockerVersionFromGit()
+			packageVersion, err = pythonVersionFromGit(p.versionPrefix)
 			if err != nil {
 				return nil, "", err
+			}
+			// Before this date, the arvados/jobs version hash was calculated differently
+			if strings.Compare(packageVersion,"1.0.20171211211613") == -1 {
+				packageVersion, err = dockerVersionFromGit()
 			}
 		}
 
