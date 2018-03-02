@@ -67,6 +67,12 @@ type Config struct {
 	Packages []bundle
 }
 
+type directoryVersions struct {
+	Path                 string
+	Timestamp            string
+	VersionWithoutPrefix string
+}
+
 var theConfig Config
 
 const defaultConfigPath = "/etc/arvados/version-server/version-server.yml"
@@ -525,11 +531,12 @@ func normalizeRequestedHash(hash string) (string, error) {
 	return gitHash, nil
 }
 
-func getPackageVersionsWorker(hash string) (gitHash string, goSDKTimestamp string, goSDKVersionWithoutPrefix string, pythonSDKTimestamp string, err error) {
+func getPackageVersionsWorker(hash string) (gitHash string, dirVersions map[string]directoryVersions, err error) {
 	gitHash = ""
-	goSDKTimestamp = ""
-	goSDKVersionWithoutPrefix = ""
-	pythonSDKTimestamp = ""
+	var timestamp = ""
+	var prefix = ""
+
+	dirVersions = make(map[string]directoryVersions)
 
 	_, err = prepareGitCheckout(hash)
 	if err != nil {
@@ -547,14 +554,31 @@ func getPackageVersionsWorker(hash string) (gitHash string, goSDKTimestamp strin
 	if err != nil {
 		err = nil
 	} else {
-		goSDKTimestamp, err = timestampFromGit()
+		timestamp, err = timestampFromGit()
 		if err != nil {
 			return
 		}
-		goSDKVersionWithoutPrefix, err = versionFromGit("")
+		prefix, err = versionFromGit("")
 		if err != nil {
 			return
 		}
+		dirVersions["sdk/go"] = directoryVersions{"sdk/go", timestamp, prefix}
+	}
+
+	// Get the git timestamp and version string for the sdk/go directory
+	err = os.Chdir(theConfig.DirPath + "/lib/dispatchcloud")
+	if err != nil {
+		err = nil
+	} else {
+		timestamp, err = timestampFromGit()
+		if err != nil {
+			return
+		}
+		prefix, err = versionFromGit("")
+		if err != nil {
+			return
+		}
+		dirVersions["lib/dispatchcloud"] = directoryVersions{"lib/dispatchcloud", timestamp, prefix}
 	}
 
 	// Get the git timestamp and version string for the sdk/python directory
@@ -562,10 +586,15 @@ func getPackageVersionsWorker(hash string) (gitHash string, goSDKTimestamp strin
 	if err != nil {
 		err = nil
 	} else {
-		pythonSDKTimestamp, err = timestampFromGit()
+		timestamp, err = timestampFromGit()
 		if err != nil {
 			return
 		}
+		prefix, err = versionFromGit("")
+		if err != nil {
+			return
+		}
+		dirVersions["sdk/python"] = directoryVersions{"sdk/python", timestamp, prefix}
 	}
 
 	return
@@ -590,7 +619,10 @@ func pythonSDKVersionCheck(pythonSDKTimestamp string) (err error) {
 func getPackageVersions(hash string) (versions map[string]map[string]string, gitHash string, err error) {
 	versions = make(map[string]map[string]string)
 
-	gitHash, goSDKTimestamp, goSDKVersionWithoutPrefix, pythonSDKTimestamp, err := getPackageVersionsWorker(hash)
+	var maxTimestamp string
+	var dirVersions map[string]directoryVersions
+
+	gitHash, dirVersions, err = getPackageVersionsWorker(hash)
 	if err != nil {
 		return nil, "", err
 	}
@@ -620,14 +652,24 @@ func getPackageVersions(hash string) (versions map[string]map[string]string, git
 				return nil, "", err
 			}
 
-			if goSDKTimestamp > packageTimestamp {
-				packageVersion = p.versionPrefix + goSDKVersionWithoutPrefix
+			maxTimestamp = packageTimestamp
+
+			if dirVersions["sdk/go"].Timestamp > maxTimestamp {
+				maxTimestamp = dirVersions["sdk/go"].Timestamp
+				packageVersion = p.versionPrefix + dirVersions["sdk/go"].VersionWithoutPrefix
+			}
+
+			if p.name == "crunch-dispatch-slurm" {
+				if dirVersions["lib/dispatchcloud"].Timestamp > maxTimestamp {
+					maxTimestamp = dirVersions["lib/dispatchcloud"].Timestamp
+					packageVersion = p.versionPrefix + dirVersions["lib/dispatchcloud"].VersionWithoutPrefix
+				}
 			}
 		} else if p.versionType == "python" {
 			// Not all of our packages that use our python sdk are automatically
 			// getting rebuilt when sdk/python changes. Yet.
 			if p.name == "python-arvados-cwl-runner" {
-				err = pythonSDKVersionCheck(pythonSDKTimestamp)
+				err = pythonSDKVersionCheck(dirVersions["sdk/python"].Timestamp)
 				if err != nil {
 					return nil, "", err
 				}
@@ -646,7 +688,7 @@ func getPackageVersions(hash string) (versions map[string]map[string]string, git
 			// the arvados/jobs image version is always the latest of the
 			// sdk/python and the sdk/cwl version
 			if p.name == "arvados/jobs" {
-				err = pythonSDKVersionCheck(pythonSDKTimestamp)
+				err = pythonSDKVersionCheck(dirVersions["sdk/python"].Timestamp)
 				if err != nil {
 					return nil, "", err
 				}
@@ -656,7 +698,7 @@ func getPackageVersions(hash string) (versions map[string]map[string]string, git
 				return nil, "", err
 			}
 			// Before this date, the arvados/jobs version hash was calculated differently
-			if strings.Compare(packageVersion,"1.0.20171211211613") == -1 {
+			if strings.Compare(packageVersion, "1.0.20171211211613") == -1 {
 				packageVersion, err = dockerVersionFromGit()
 			}
 		}
