@@ -258,6 +258,71 @@ func (s *ServerRequiredSuite) TestResults(c *C) {
 		c.Check(string(body), Matches, ".*\"python-arvados-cwl-runner\":\"1.0.20161216215418\".*")
 	}
 
+	// Check the arvados-src version string for a new-style version commit
+	{
+		client := http.Client{}
+		req, err := http.NewRequest("GET",
+			fmt.Sprintf("http://%s/%s", listener.Addr().String(), "v1/commit/a3da6f03cfb1bd6b36fdb1a51efeafcd7d64157e"),
+			nil)
+		resp, err := client.Do(req)
+		c.Check(err, Equals, nil)
+		c.Check(resp.StatusCode, Equals, 200)
+		body, err := ioutil.ReadAll(resp.Body)
+		c.Check(string(body), Matches, ".*\"arvados-src\":\"1.1.3.20180402183444\".*")
+	}
+
+	// Check the keepproxy version string for a new-style version commit
+	{
+		client := http.Client{}
+		req, err := http.NewRequest("GET",
+			fmt.Sprintf("http://%s/%s", listener.Addr().String(), "v1/commit/001a60dff02545c2d2476a437b1846c9ae633941"),
+			nil)
+		resp, err := client.Do(req)
+		c.Check(err, Equals, nil)
+		c.Check(resp.StatusCode, Equals, 200)
+		body, err := ioutil.ReadAll(resp.Body)
+		c.Check(string(body), Matches, ".*\"keepproxy\":\"1.1.3.20180323181850\".*")
+	}
+
+	// Check the python-arvados-python-client version string for a new-style version commit
+	{
+		client := http.Client{}
+		req, err := http.NewRequest("GET",
+			fmt.Sprintf("http://%s/%s", listener.Addr().String(), "v1/commit/001a60dff02545c2d2476a437b1846c9ae633941"),
+			nil)
+		resp, err := client.Do(req)
+		c.Check(err, Equals, nil)
+		c.Check(resp.StatusCode, Equals, 200)
+		body, err := ioutil.ReadAll(resp.Body)
+		c.Check(string(body), Matches, ".*\"python-arvados-python-client\":\"1.1.3.20180402183444\".*")
+	}
+
+	// Check the arvados-login-sync version string for a new-style version commit
+	{
+		client := http.Client{}
+		req, err := http.NewRequest("GET",
+			fmt.Sprintf("http://%s/%s", listener.Addr().String(), "v1/commit/001a60dff02545c2d2476a437b1846c9ae633941"),
+			nil)
+		resp, err := client.Do(req)
+		c.Check(err, Equals, nil)
+		c.Check(resp.StatusCode, Equals, 200)
+		body, err := ioutil.ReadAll(resp.Body)
+		c.Check(string(body), Matches, ".*\"arvados-login-sync\":\"1.1.3.20170629115132\".*")
+	}
+
+	// Check the arvados-cwl-runner version string for a new-style version commit
+	{
+		client := http.Client{}
+		req, err := http.NewRequest("GET",
+			fmt.Sprintf("http://%s/%s", listener.Addr().String(), "v1/commit/001a60dff02545c2d2476a437b1846c9ae633941"),
+			nil)
+		resp, err := client.Do(req)
+		c.Check(err, Equals, nil)
+		c.Check(resp.StatusCode, Equals, 200)
+		body, err := ioutil.ReadAll(resp.Body)
+		c.Check(string(body), Matches, ".*\"arvados-cwl-runner\":\"1.1.3.20180402195553\".*")
+	}
+
 	// Check passing 'master' as revision
 	{
 		client := http.Client{}

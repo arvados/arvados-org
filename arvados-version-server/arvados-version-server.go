@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"regexp"
 	"strings"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -70,6 +71,7 @@ type Config struct {
 type directoryVersions struct {
 	Path                 string
 	Timestamp            string
+	FormattedTimestamp   string
 	VersionWithoutPrefix string
 }
 
@@ -404,7 +406,7 @@ func prepareGitCheckout(hash string) (string, error) {
 		logError([]string{"Error changing directory to", theConfig.DirPath})
 		return "", fmt.Errorf("Error changing directory to %s", theConfig.DirPath)
 	}
-	cmdArgs := []string{"fetch", "--all"}
+	cmdArgs := []string{"fetch", "--all", "--tags"}
 	if _, err := exec.Command(theConfig.GitExecutablePath, cmdArgs...).Output(); err != nil {
 		logError([]string{"There was an error running the command ", theConfig.GitExecutablePath, strings.Join(cmdArgs, " "), err.Error()})
 		return "", fmt.Errorf("There was an error fetching all remotes")
@@ -450,11 +452,9 @@ func versionFromGit(prefix string) (string, error) {
 		logError([]string{"There was an error running the command ", theConfig.GitExecutablePath, strings.Join(cmdArgs, " "), err.Error()})
 		return "", fmt.Errorf("There was an error getting the git hash for this revision")
 	}
-	cmdName := "/bin/date"
-	cmdArgs = []string{"-ud", "@" + string(gitTs), "+%Y%m%d%H%M%S"}
-	date, err := exec.Command(cmdName, cmdArgs...).Output()
+	date, err := generateFormattedTimestamp(string(gitTs))
 	if err != nil {
-		logError([]string{"There was an error running the command ", cmdName, strings.Join(cmdArgs, " "), err.Error()})
+		logError([]string{"There was an error formatting the date", err.Error()})
 		return "", fmt.Errorf("There was an error converting the datestamp for this revision")
 	}
 
@@ -467,15 +467,13 @@ func rubyVersionFromGit(prefix string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	cmdName := "/bin/date"
-	cmdArgs := []string{"-ud", "@" + string(gitTs), "+%Y%m%d%H%M%S"}
-	date, err := exec.Command(cmdName, cmdArgs...).Output()
+	date, err := generateFormattedTimestamp(string(gitTs))
 	if err != nil {
-		logError([]string{"There was an error running the command ", cmdName, strings.Join(cmdArgs, " "), err.Error()})
+		logError([]string{"There was an error formatting the date", err.Error()})
 		return "", fmt.Errorf("There was an error converting the datestamp for this revision")
 	}
 
-	return fmt.Sprintf("%s.%s", strings.TrimSpace(prefix), strings.TrimSpace(string(date))), nil
+	return fmt.Sprintf("%s.%s", strings.TrimSpace(prefix), strings.TrimSpace(date)), nil
 }
 
 // Generates a python package version number from the git log for the current working directory
@@ -494,6 +492,16 @@ func dockerVersionFromGit() (string, error) {
 		return "", err
 	}
 	return rv, nil
+}
+
+func getGitTag() (gitTag string, err error) {
+	cmdArgs := []string{"describe", "--abbrev=0"}
+	gitTagByteArray, err := exec.Command(theConfig.GitExecutablePath, cmdArgs...).Output()
+	if err != nil {
+		logError([]string{"There was an error running the command ", theConfig.GitExecutablePath, strings.Join(cmdArgs, " "), err.Error()})
+		return "", fmt.Errorf("There was an error getting the git tag for this revision:", theConfig.GitExecutablePath, strings.Join(cmdArgs, " "), err.Error())
+	}
+	return fmt.Sprintf("%s", strings.TrimSpace(string(gitTagByteArray))), nil
 }
 
 func getGitTs() (gitTs []byte, err error) {
@@ -531,9 +539,20 @@ func normalizeRequestedHash(hash string) (string, error) {
 	return gitHash, nil
 }
 
+func generateFormattedTimestamp(timestamp string) (formattedTimestamp string, err error) {
+  i, err := strconv.ParseInt(timestamp, 10, 64)
+  if err != nil {
+    return
+  }
+  tmp := time.Unix(i, 0)
+
+  return tmp.Format("20060102150405"), err
+}
+
 func getPackageVersionsWorker(hash string) (gitHash string, dirVersions map[string]directoryVersions, err error) {
 	gitHash = ""
 	var timestamp = ""
+	var formattedTimestamp = ""
 	var prefix = ""
 
 	dirVersions = make(map[string]directoryVersions)
@@ -549,6 +568,23 @@ func getPackageVersionsWorker(hash string) (gitHash string, dirVersions map[stri
 		return
 	}
 
+	prefix, err = versionFromGit("")
+	if err != nil {
+		return
+	}
+
+	timestamp, err = timestampFromGit()
+	if err != nil {
+		return
+	}
+
+	formattedTimestamp, err = generateFormattedTimestamp(timestamp)
+	if err != nil {
+		return
+	}
+
+	dirVersions["."] = directoryVersions{".", timestamp, formattedTimestamp, prefix}
+
 	// Get the git timestamp and version string for the sdk/go directory
 	err = os.Chdir(theConfig.DirPath + "/sdk/go")
 	if err != nil {
@@ -562,10 +598,16 @@ func getPackageVersionsWorker(hash string) (gitHash string, dirVersions map[stri
 		if err != nil {
 			return
 		}
-		dirVersions["sdk/go"] = directoryVersions{"sdk/go", timestamp, prefix}
+
+		formattedTimestamp, err = generateFormattedTimestamp(timestamp)
+		if err != nil {
+			return
+		}
+
+		dirVersions["sdk/go"] = directoryVersions{"sdk/go", timestamp, formattedTimestamp, prefix}
 	}
 
-	// Get the git timestamp and version string for the sdk/go directory
+	// Get the git timestamp and version string for the lib/dispatchcloud directory
 	err = os.Chdir(theConfig.DirPath + "/lib/dispatchcloud")
 	if err != nil {
 		err = nil
@@ -578,7 +620,12 @@ func getPackageVersionsWorker(hash string) (gitHash string, dirVersions map[stri
 		if err != nil {
 			return
 		}
-		dirVersions["lib/dispatchcloud"] = directoryVersions{"lib/dispatchcloud", timestamp, prefix}
+		formattedTimestamp, err = generateFormattedTimestamp(timestamp)
+		if err != nil {
+			return
+		}
+
+		dirVersions["lib/dispatchcloud"] = directoryVersions{"lib/dispatchcloud", timestamp, formattedTimestamp, prefix}
 	}
 
 	// Get the git timestamp and version string for the sdk/python directory
@@ -594,7 +641,12 @@ func getPackageVersionsWorker(hash string) (gitHash string, dirVersions map[stri
 		if err != nil {
 			return
 		}
-		dirVersions["sdk/python"] = directoryVersions{"sdk/python", timestamp, prefix}
+		formattedTimestamp, err = generateFormattedTimestamp(timestamp)
+		if err != nil {
+			return
+		}
+
+		dirVersions["sdk/python"] = directoryVersions{"sdk/python", timestamp, formattedTimestamp, prefix}
 	}
 
 	return
@@ -617,6 +669,118 @@ func pythonSDKVersionCheck(pythonSDKTimestamp string) (err error) {
 }
 
 func getPackageVersions(hash string) (versions map[string]map[string]string, gitHash string, err error) {
+	versions = make(map[string]map[string]string)
+
+	var maxTimestamp string
+	var dirVersions map[string]directoryVersions
+
+	gitHash, dirVersions, err = getPackageVersionsWorker(hash)
+	if err != nil {
+		return nil, "", err
+	}
+
+	timestamp, err := time.Parse("20060102150405","20180402183444")
+	if err != nil {
+		return nil, "", err
+	}
+
+	// As part of #13200, we changed the version numbering of our packages.
+	// This is the timestamp for the cutoff revision.
+	if dirVersions["."].Timestamp < strconv.FormatInt(timestamp.Unix(),10) {
+		return oldGetPackageVersions(hash)
+	}
+
+	gitTag, err := getGitTag()
+	if err != nil {
+		return nil, "", err
+	}
+
+	for _, p := range theConfig.Packages {
+		err = os.Chdir(theConfig.DirPath + "/" + p.sourceDir)
+		if err != nil {
+			// Skip those packages for which the source directory doesn't exist
+			// in this revision of the source tree.
+			err = nil
+			continue
+		}
+		name := p.name
+
+		var packageVersion string
+
+		if (p.versionType == "git") || (p.versionType == "go") {
+			packageVersion, err = pythonVersionFromGit(gitTag)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+		if p.versionType == "go" {
+			var packageTimestamp string
+			packageTimestamp, err = timestampFromGit()
+			if err != nil {
+				return nil, "", err
+			}
+
+			maxTimestamp = packageTimestamp
+
+			if dirVersions["sdk/go"].Timestamp > maxTimestamp {
+				maxTimestamp = dirVersions["sdk/go"].Timestamp
+				packageVersion = gitTag + "." + dirVersions["sdk/go"].FormattedTimestamp
+			}
+
+			if p.name == "crunch-dispatch-slurm" {
+				if dirVersions["lib/dispatchcloud"].Timestamp > maxTimestamp {
+					maxTimestamp = dirVersions["lib/dispatchcloud"].Timestamp
+					packageVersion = gitTag + "." + dirVersions["lib/dispatchcloud"].FormattedTimestamp
+				}
+			}
+		} else if p.versionType == "python" {
+			// Not all of our packages that use our python sdk are automatically
+			// getting rebuilt when sdk/python changes. Yet.
+			if p.name == "python-arvados-cwl-runner" {
+				err = pythonSDKVersionCheck(dirVersions["sdk/python"].Timestamp)
+				if err != nil {
+					return nil, "", err
+				}
+			}
+
+			packageVersion, err = pythonVersionFromGit(gitTag)
+			if err != nil {
+				return nil, "", err
+			}
+		} else if p.versionType == "ruby" {
+			packageVersion, err = rubyVersionFromGit(gitTag)
+			if err != nil {
+				return nil, "", err
+			}
+		} else if p.versionType == "docker" {
+			// the arvados/jobs image version is always the latest of the
+			// sdk/python and the sdk/cwl version
+			if p.name == "arvados/jobs" {
+				err = pythonSDKVersionCheck(dirVersions["sdk/python"].Timestamp)
+				if err != nil {
+					return nil, "", err
+				}
+			}
+			packageVersion, err = pythonVersionFromGit(gitTag)
+			if err != nil {
+				return nil, "", err
+			}
+			// Before this date, the arvados/jobs version hash was calculated differently
+			if strings.Compare(packageVersion, "1.0.20171211211613") == -1 {
+				packageVersion, err = dockerVersionFromGit()
+			}
+		}
+
+		if versions[strings.Title(p.packageType)] == nil {
+			versions[strings.Title(p.packageType)] = make(map[string]string)
+		}
+		versions[strings.Title(p.packageType)][name] = packageVersion
+	}
+
+	return
+}
+
+func oldGetPackageVersions(hash string) (versions map[string]map[string]string, gitHash string, err error) {
 	versions = make(map[string]map[string]string)
 
 	var maxTimestamp string
