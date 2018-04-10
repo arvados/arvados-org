@@ -15,6 +15,9 @@ fi
 
 JSON=`curl -s http://versions.arvados.org/v1/commit/$REVISION`
 
+echo "#########"
+echo "# generated with $0 $REVISION"
+echo "# "$(date +%F)
 echo "versions:"
 echo "  default-docker-jobs-image-hash: "`echo $JSON | jq -r .Versions.Docker.\"arvados/jobs\"`
 echo $JSON |jq -r .Versions.Gem |grep ':' |sed -e 's/[",]//g' -e 's/:/-gem:/'
